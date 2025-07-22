@@ -1,9 +1,10 @@
 import copy
 import random
+from itertools import combinations
 
 class Deck:
     def __init__(self):
-        ''' I semi delle carte sono identificati dalla lettera: 
+        ''' I semi delle carte sono identificati dalla lettera:
             'B' : bastoni
             'C' : coppe
             'D' : denari
@@ -18,6 +19,9 @@ class Deck:
 
         self.current_deck = copy.deepcopy(self.deck)
 
+    def __str__(self):
+        return f"current_deck: {self.current_deck}"
+
     def shuffle(self):
         print("* shuffling deck *")
         random.shuffle(self.current_deck)
@@ -26,14 +30,12 @@ class Deck:
         cards = []
         for i in range(0, n):
             cards.append(self.current_deck.pop(0))
-        
+
         return cards
 
     def reset(self):
         self.current_deck = copy.deepcopy(self.deck)
 
-    def print_current_deck(self):
-        print(f"current_deck: {self.current_deck}")
 
 
 class CardGame:
@@ -43,42 +45,62 @@ class CardGame:
         self.upcards = []
 
     def init_game(self):
-        deck.shuffle()
-        
-        for player in self.players:
-            player.set_cards(deck.get_cards(3))
-        
-        for upcard in deck.get_cards(4):
-            upcards.append(card)
+        self.deck.shuffle()
 
-        players[0].currently_playing = True
+        for player in self.players:
+            player.set_cards(self.deck.get_cards(3))
+
+        for upcard in self.deck.get_cards(4):
+            self.upcards.append(upcard)
+
+        self.players[0].currently_playing = True
 
     def game(self):
-        init_game()
+        self.init_game()
 
-        while game_ongoing():
-            player = get_active_player()
-            card = player.get_best_card(upcards)
-            play_card(card)
+        for player in self.players:
+            print(f"{player}")
+        #print(f"{self.deck}")
+        print(f"Carte sul tavolo: {self.upcards}")
+
+        while self.game_ongoing():
+            player = self.get_active_player()
+            card, opportunity = player.get_best_card(self.upcards)
+            self.play_card(card, opportunity)
+            print(f"Carte sul tavolo: {self.upcards}")
+            return
 
     def get_active_player(self):
-        for i in range(len(players)):
-            if players[i].currently_playing:
-                players[i].currently_playing = False
-                i = (i+1)%len(players)
-                players[i].currently_playing = True
-                return players[i]
+        for i in range(len(self.players)):
+            if self.players[i].currently_playing:
+                return self.players[i]
 
-    def play_card(self):
-        pass
+    def update_active_player(self):
+        for i in range(len(self.players)):
+            if self.players[i].currently_playing:
+                self.players[i].currently_playing = False
+                i = (i + 1) % len(self.players)
+                self.players[i].currently_playing = True
+                return self.players[i]
+
+    def play_card(self, card, opportunity):
+        print(f"Player played card: {card}")
+        if opportunity is not None:
+            for o in opportunity:
+                for i in range(len(self.upcards)):
+                    if o[0] == self.upcards[i][0]:
+                        self.upcards.pop(i)
+                        break
+        else:
+            self.upcards.append(card)
 
     def game_ongoing(self):
         game_ongoing = False
-        for player in players:
+        for player in self.players:
             game_ongoing = game_ongoing or player.has_cards()
 
-        return game_ongonig
-        
+        return game_ongoing
+
 
 class Player:
     def __init__(self):
@@ -86,39 +108,47 @@ class Player:
         self.cards = []
         self.score = 0
 
+    def __str__(self):
+        return f"Player: [currently_playing = {self.currently_playing}, cards = {self.cards}, score = {self.score}]"
+
+
     def get_best_card(self, upcards):
-        card = None
-
         if len(upcards) == 0:
-            card = self.cards.pop(0)
-            return card
+            return self.cards.pop(0), upcards
+        elif len(upcards) == 1:
+            match = next((x for x in self.cards if x[0] == upcards[0][0]), None)
+            if match != None:
+                return match, upcards
 
-        for upcard in upcards:
-            for i in range(len(cards)):
-                
+            match = next((x for x in self.cards if x[0] + upcards[0][0] != 7), None)
+            if match != None:
+                return match, upcards
+
+        opportunities = {}
+        for i in range(len(upcards)):
+            for card_combination in combinations(upcards, i):
+                print(f"combinations: {card_combination}")
+                total_value = 0
+                for card in card_combination:
+                    total_value = total_value + card[0]
+                if total_value <= 10:
+                    opportunities[total_value] = card_combination
+        print(f"opportunities: {opportunities}")
+
+        for i in range(len(self.cards)):
+            for opportunity in opportunities.keys():
+                if self.cards[i][0] == opportunity:
+                    return self.cards.pop(i), opportunities[opportunity]
+
+        return self.cards.pop(0), None
+
 
     def has_cards(self):
         return len(self.cards) > 0
 
+    def set_cards(self, cards):
+        self.cards = cards
 
 if __name__ == '__main__':
-
-
-
-
-
-''' 
-players = [player1, player2]
-
-game.play_hand(self, ):
-    hand = deck.get_hand()
-    while len(players) is not 0:
-        player = 
-        card = player1.select_card(hand)
-        player1.play_card(card)
-
-
-
-
-
-'''
+    card_game = CardGame()
+    card_game.game()
