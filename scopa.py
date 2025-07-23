@@ -1,23 +1,33 @@
 import copy
 import random
 from itertools import combinations
+from enum import Enum
+from typing import List
+
+class Suit(Enum):
+    B = 1
+    C = 2
+    D = 3
+    S = 4    
+
+
+class Card:
+    def __init__(self, value, suit):
+        self.value = value
+        self.suit = suit
+
+    def __repr__(self):
+        return f"({self.value}, {self.suit})"
 
 class Deck:
     def __init__(self):
-        ''' I semi delle carte sono identificati dalla lettera:
-            'B' : bastoni
-            'C' : coppe
-            'D' : denari
-            'S' : spade
+        self.cards = [
+            Card(value, suit)
+            for value in range(1, 11)
+            for suit in [s.name for s in Suit]
+        ]
 
-            Il valore delle carte va da 1 (asso) fino a 10 (re)
-        '''
-        self.deck = [(1, "B"), (2, "B"), (3, "B"), (4, "B"), (5, "B"), (6, "B"), (7, "B"), (8, "B"), (9, "B"), (10, "B"), 
-                     (1, "C"), (2, "C"), (3, "C"), (4, "C"), (5, "C"), (6, "C"), (7, "C"), (8, "C"), (9, "C"), (10, "C"), 
-                     (1, "D"), (2, "D"), (3, "D"), (4, "D"), (5, "D"), (6, "D"), (7, "D"), (8, "D"), (9, "D"), (10, "D"), 
-                     (1, "S"), (2, "S"), (3, "S"), (4, "S"), (5, "S"), (6, "S"), (7, "S"), (8, "S"), (9, "S"), (10, "S") ] 
-
-        self.current_deck = copy.deepcopy(self.deck)
+        self.current_deck = copy.deepcopy(self.cards)
 
     def __str__(self):
         return f"current_deck: {self.current_deck}"
@@ -37,18 +47,14 @@ class Deck:
         self.current_deck = copy.deepcopy(self.deck)
 
 
-
 class CardGame:
     def __init__(self):
         self.deck = Deck()
-        self.players = [Player(), Player()]
+        self.players = [Player(1), Player(2)]
         self.upcards = []
 
     def init_game(self):
         self.deck.shuffle()
-
-        for player in self.players:
-            player.set_cards(self.deck.get_cards(3))
 
         for upcard in self.deck.get_cards(4):
             self.upcards.append(upcard)
@@ -57,18 +63,23 @@ class CardGame:
 
     def game(self):
         self.init_game()
-
-        for player in self.players:
-            print(f"{player}")
-        #print(f"{self.deck}")
-        print(f"Carte sul tavolo: {self.upcards}")
+        n_mano = 1
 
         while self.game_ongoing():
-            player = self.get_active_player()
-            card, opportunity = player.get_best_card(self.upcards)
-            self.play_card(card, opportunity)
+            if all(not player.has_cards() for player in self.players):
+                print(f"\n\n------- MANO {n_mano} -------")
+                n_mano = n_mano + 1
+                for player in self.players:
+                    hand = self.deck.get_cards(3)
+                    player.set_cards(hand)
+
+            player = self.update_active_player()
+            print(player)
             print(f"Carte sul tavolo: {self.upcards}")
-            return
+
+            played_card, picked_cards = player.play_card(self.upcards)
+            self.update_upcards(played_card, picked_cards)
+            print("\n")
 
     def get_active_player(self):
         for i in range(len(self.players)):
@@ -83,63 +94,82 @@ class CardGame:
                 self.players[i].currently_playing = True
                 return self.players[i]
 
-    def play_card(self, card, opportunity):
-        print(f"Player played card: {card}")
-        if opportunity is not None:
-            for o in opportunity:
-                for i in range(len(self.upcards)):
-                    if o[0] == self.upcards[i][0]:
-                        self.upcards.pop(i)
-                        break
+    def update_upcards(self, played_card: Card, picked_cards: List[Card]):
+        print(f"Player played card: {played_card}")
+
+        # butto una carta senza prendere niente
+        if picked_cards is None: 
+            self.upcards.append(played_card)
+        
+        # ho almeno una carta da prendere
         else:
-            self.upcards.append(card)
+            for card in picked_cards:
+                self.upcards.remove(card)            
 
     def game_ongoing(self):
-        game_ongoing = False
-        for player in self.players:
-            game_ongoing = game_ongoing or player.has_cards()
+        deck_has_cards = (len(self.deck.current_deck) > 0)
+        players_have_cards = any([player.has_cards() for player in self.players])
 
-        return game_ongoing
+        return deck_has_cards or players_have_cards
 
 
 class Player:
-    def __init__(self):
+    def __init__(self, n):
+        self.n = n
         self.currently_playing = False
         self.cards = []
         self.score = 0
 
-    def __str__(self):
-        return f"Player: [currently_playing = {self.currently_playing}, cards = {self.cards}, score = {self.score}]"
+    def __repr__(self):
+        return f"Player: [n = {self.n}, currently_playing = {self.currently_playing}, cards = {self.cards}, score = {self.score}]"
 
-
-    def get_best_card(self, upcards):
-        if len(upcards) == 0:
-            return self.cards.pop(0), upcards
+    def play_card(self, upcards):
+        if len(upcards) == 0:    
+            # play an arbitrary card and pick nothing
+            played_card = self.cards.pop(0) 
+            picked_cards = None
+            return played_card, picked_cards
+        
         elif len(upcards) == 1:
-            match = next((x for x in self.cards if x[0] == upcards[0][0]), None)
+            # there is at most one card to pick
+            # try to find it
+            match = next((x for x in self.cards if x.value == upcards[0].value), None)
             if match != None:
+                self.cards.remove(match)
                 return match, upcards
 
-            match = next((x for x in self.cards if x[0] + upcards[0][0] != 7), None)
+            # couldn't find it. play a card that doesn't sum with 7 (if possible)
+            match = next((x for x in self.cards if x.value + upcards[0].value != 7), None)
             if match != None:
-                return match, upcards
+                self.cards.remove(match)
+                return match, None
+            
+            return self.cards.pop(0), None
 
-        opportunities = {}
-        for i in range(len(upcards)):
-            for card_combination in combinations(upcards, i):
-                print(f"combinations: {card_combination}")
-                total_value = 0
-                for card in card_combination:
-                    total_value = total_value + card[0]
-                if total_value <= 10:
-                    opportunities[total_value] = card_combination
-        print(f"opportunities: {opportunities}")
+        else:
+            # get all possible picks
+            possible_picks = {}
+            card_picks_value = {}
+            for i in range(len(upcards)+1):
+                upcards_combinations = combinations(upcards, i)
+                for combination in upcards_combinations:
+                    #print(f"combinations: {combination}")
+                    total_pick_value = 0
+                    for card in combination:
+                        total_pick_value = total_pick_value + card.value
+                    for card in self.cards:
+                        if card.value == total_pick_value:
+                            possible_picks[total_pick_value] = combination
+                            card_picks_value[card] = combination
+            #print(f"possible_picks: {possible_picks}")
+            print(f"card_picks_value: {card_picks_value}")
 
-        for i in range(len(self.cards)):
-            for opportunity in opportunities.keys():
-                if self.cards[i][0] == opportunity:
-                    return self.cards.pop(i), opportunities[opportunity]
-
+        if len(card_picks_value.items()) > 0:
+            # choose one pick
+            played_card, picked_card = random.choice(list(card_picks_value.items()))
+            self.cards.remove(played_card)
+            return played_card, picked_card
+        
         return self.cards.pop(0), None
 
 
