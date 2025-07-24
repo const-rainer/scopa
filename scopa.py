@@ -124,54 +124,72 @@ class Player:
         return f"Player: [n = {self.n}, currently_playing = {self.currently_playing}, cards = {self.cards}, score = {self.score}]"
 
     def play_card(self, upcards):
+        played_card = None
+        picked_cards = None
+
         if len(upcards) == 0:    
             # play an arbitrary card and pick nothing
-            played_card = self.cards.pop(0) 
-            picked_cards = None
-            return played_card, picked_cards
+            played_card = self.__get_random_card()
         
         elif len(upcards) == 1:
             # there is at most one card to pick
-            # try to find it
-            match = next((x for x in self.cards if x.value == upcards[0].value), None)
-            if match != None:
-                self.cards.remove(match)
-                return match, upcards
-
-            # couldn't find it. play a card that doesn't sum with 7 (if possible)
-            match = next((x for x in self.cards if x.value + upcards[0].value != 7), None)
-            if match != None:
-                self.cards.remove(match)
-                return match, None
-            
-            return self.cards.pop(0), None
+            # try to make scopa
+            played_card, picked_cards = self.__match_single_upcard(upcards)
 
         else:
             # get all possible picks
-            possible_picks = {}
-            card_picks_value = {}
-            for i in range(len(upcards)+1):
-                upcards_combinations = combinations(upcards, i)
-                for combination in upcards_combinations:
-                    #print(f"combinations: {combination}")
-                    total_pick_value = 0
-                    for card in combination:
-                        total_pick_value = total_pick_value + card.value
-                    for card in self.cards:
-                        if card.value == total_pick_value:
-                            possible_picks[total_pick_value] = combination
-                            card_picks_value[card] = combination
-            #print(f"possible_picks: {possible_picks}")
-            print(f"card_picks_value: {card_picks_value}")
-
-        if len(card_picks_value.items()) > 0:
-            # choose one pick
-            played_card, picked_card = random.choice(list(card_picks_value.items()))
-            self.cards.remove(played_card)
-            return played_card, picked_card
+            played_card, picked_cards = self.__choose_best_pick(upcards)
         
-        return self.cards.pop(0), None
+        self.cards.remove(played_card)
+        return played_card, picked_cards
 
+    def __choose_best_pick(self, upcards):
+        played_card = None
+        picked_cards = None
+
+        possible_picks = self.__get_all_possible_picks(upcards)
+        print(f"possible_picks: {possible_picks}")
+
+        if len(possible_picks.items()) > 0:
+            # choose one pick
+            played_card, picked_cards = random.choice(list(possible_picks.items()))
+        else:
+            # nothing to pick. play one random card.
+            played_card = self.__get_random_card()
+
+        return played_card, picked_cards
+
+    
+    def __get_all_possible_picks(self, upcards):
+        possible_picks = {}
+        for i in range(len(upcards)+1):
+            upcards_combinations = combinations(upcards, i)
+            for combination in upcards_combinations:
+                #print(f"combinations: {combination}")
+                total_pick_value = 0
+                for card in combination:
+                    total_pick_value = total_pick_value + card.value
+                for card in self.cards:
+                    if card.value == total_pick_value:
+                        possible_picks[card] = combination
+        
+        return possible_picks
+
+    def __get_random_card(self):
+        return self.cards[0]
+    
+    def __match_single_upcard(self, upcards):
+        scopa = next((x for x in self.cards if x.value == upcards[0].value), None)
+        if scopa != None:
+            # we made scopa
+            return scopa, upcards
+        
+        # couldn't make scopa. play a card that doesn't sum with 7 (if possible)
+        match = next((x for x in self.cards if x.value + upcards[0].value != 7), None)
+        if match != None:
+            return match, None
+        
+        return self.__get_random_card(), None
 
     def has_cards(self):
         return len(self.cards) > 0
