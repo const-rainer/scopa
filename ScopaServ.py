@@ -1,6 +1,9 @@
 import socket
 import random
 import copy
+import logging
+
+logger = logging.getLogger()
 
 class Card:
     def __init__(self, value, suit):
@@ -15,7 +18,7 @@ class Deck:
         self.__cards = [
             Card(value, suit)
             for value in range(1, 11)
-            for suit in [s for s in ['B', 'C', 'D', 'S']]
+            for suit in ['B', 'C', 'D', 'S']
         ]
 
         self.current_deck = copy.deepcopy(self.__cards)
@@ -49,9 +52,11 @@ class ScopaServ():
 
     def quante_carte(self, player):
         msg = "GETN"
+        print(f"[DEBUG] sending {msg} to player")
         player.sendall(msg.encode())
-        n_carte = player.recv(16)
-        return int(n_carte.decode())
+        n_carte = int(player.recv(16).decode())
+        print(f"[DEBUG] ricevuto: {n_carte}")
+        return n_carte
 
     def servo_carte(self, player, cards):
         print(f"Servo carte al giocatore {player}")
@@ -93,6 +98,7 @@ class ScopaServ():
 
         deck = Deck()
         deck.shuffle()
+        print(f"[DEBUG] Numero carte: {deck}")
         cards_left = 40
         round_n = 1
 
@@ -107,12 +113,13 @@ class ScopaServ():
 
         while cards_left > 0:
             print(f"Round: {round_n}, Cards left: {cards_left}, upcards: {upcards}")
-            print(f"current player: {current_player}")
+            print(f"Cards left: {cards_left}")
+            print(f"current player: {current_player.fileno()}")
             player_cards = self.quante_carte(current_player)
             if player_cards == 0:
-                print("Player ha zero carte.")
+                print(f"Player ha {player_cards} carte.")
                 cards = deck.get_cards(3)
-                self.servo_carte(player, cards)
+                self.servo_carte(current_player, cards)
     
             played_card, picked_cards = self.get_played_cards(current_player, upcards)
             if picked_cards is None:
