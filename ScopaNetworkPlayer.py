@@ -102,12 +102,12 @@ class Player:
     def __init__(self, n):
         self.n = n
         self.cards = []
-        # self.score = Score()
+        self.score = Score()
         self.currently_playing = False
 
     def __repr__(self):
-        #return f"Player: [n = {self.n}, currently_playing = {self.currently_playing}, cards = {self.cards}, score = {self.score}]"
-        return f"Player: [n = {self.n}, currently_playing = {self.currently_playing}, cards = {self.cards}"
+        return f"Player: [n = {self.n}, cards = {self.cards}, score = {self.score}]"
+        #return f"Player: [n = {self.n}, currently_playing = {self.currently_playing}, cards = {self.cards}"
 
     def has_cards(self):
         return len(self.cards) > 0
@@ -125,7 +125,7 @@ class Player:
         self.currently_playing = False
 
     def get_score(self):
-        return # self.score
+        return self.score
 
     def play_card(self, upcards):
         played_card = None
@@ -155,14 +155,13 @@ class Player:
             print("SCOPA!!")
 
 
-        # self.score.add_cards(played_card, picked_cards, scopa)
+        self.score.add_cards(played_card, picked_cards, scopa)
         self.cards.remove(played_card)
         
         return played_card, picked_cards
 
     def add_to_score(self, cards):
-        # self.score.add_last_cards(cards)
-        pass
+        self.score.add_last_cards(cards)
 
     def __choose_best_pick(self, upcards):
         played_card = None
@@ -221,31 +220,43 @@ class NetworkPlayer():
         self.cards = []
         self.player = Player(1)
 
+    def __repr__(self):
+        return str(self.player)
+
     def handle_connection(self):
         msg = self.socket.recv(1024).decode()
-        msg_type = msg[0:4]
-        msg = msg[4:]
-        match msg_type:
+        if msg == "":
+            self.socket.close()
+            self.socket = None
+            return
+
+        cmd = msg[0:4]
+        payload = msg[4:]
+        print(f"\n\n[DEBUG] received: cmd={cmd}, payload={payload}")
+        match cmd:
             case "GETN":
-                print(f"[DEBUG] received command GETN")
                 n_cards = len(self.player.cards)
                 print(f"[DEBUG] answering: {str(n_cards)}")
                 self.socket.sendall(str(n_cards).encode())
             case "SETC":
-                received_cards = self.deserialize_cards(msg)
+                received_cards = self.deserialize_cards(payload)
                 print(f"[DEBUG] received cards: {received_cards}")
                 self.player.set_cards(received_cards)
                 self.socket.sendall(b'SETC OK')
             case "PLAY":
-                print(f"[DEBUG] received command PLAY")
-                upcards = self.deserialize_cards(msg)
+                upcards = self.deserialize_cards(payload)
                 print(f"[DEBUG] received upcards: {upcards[4:]}")
                 self.play_card(upcards)
+            case "LAST":
+                received_cards = self.deserialize_cards(payload)
+                print(f"[DEBUG] received last cards: {received_cards}")
+                self.player.set_cards(received_cards)
+                self.socket.sendall(b'LAST OK')
+
         
         #input("Premere un tasto per continuare...")
 
     def play_card(self, upcards):
-        #played_card, picked_cards = super().play_card(upcards)
         print(f"[DEBUG] self.player.cards: {self.player.cards}")
         played_card, picked_cards = self.player.play_card(upcards)
 
@@ -287,5 +298,6 @@ class NetworkPlayer():
 if __name__ == "__main__":
     player = NetworkPlayer("0.0.0.0", 12345)
     
-    while True:
+    while player.socket is not None:
+        print(player)
         player.handle_connection()

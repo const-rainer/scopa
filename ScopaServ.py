@@ -36,6 +36,9 @@ class Deck:
             cards.append(self.current_deck.pop(0))
 
         return cards
+    
+    def is_empty(self):
+        return len(self.current_deck) == 0
 
 class ScopaServ():
     def __init__(self, host, port):
@@ -52,40 +55,40 @@ class ScopaServ():
 
     def quante_carte(self, player):
         msg = "GETN"
-        print(f"[DEBUG] sending {msg} to player")
+        print(f"[DEBUG] sending {msg} to player {player.fileno()}")
         player.sendall(msg.encode())
         n_carte = int(player.recv(16).decode())
-        print(f"[DEBUG] ricevuto: {n_carte}")
+        print(f"[DEBUG] received: {n_carte}")
         return n_carte
 
     def servo_carte(self, player, cards):
-        print(f"Servo carte al giocatore {player}")
         serialized_cards = self.serialize_cards(cards)
         msg = "SETC" + serialized_cards
-
-        print(f"[DEBUG] sending {msg}")
-        
+        print(f"[DEBUG] sending {msg} to player {player.fileno()}")
         player.sendall(msg.encode())
         reply = player.recv(16).decode()
-        if reply == "SETC OK":
-            print(f"[DEBUG] player replied {reply}")
-        else:
-            print(f"Error: received msg {reply}")
+        print(f"[DEBUG] received {reply}")
 
     def get_played_cards(self, player, upcards):
         serialized_upcards = self.serialize_cards(upcards)
         msg = "PLAY" + serialized_upcards
-        print(f"[DEBUG] sending {msg}")
+        print(f"[DEBUG] sending {msg} to player {player.fileno()}")
         player.sendall(msg.encode())
         received_cards = player.recv(1024).decode()
-        print(f"[DEBUG] received_cards from client: {received_cards}")
         played_card, picked_cards = self.deserialize_cards(received_cards)
-
-        print(f"[DEBUG] received cards:")
-        print(f"[DEBUG] played_card: {played_card}")
-        print(f"[DEBUG] picked_cards: {picked_cards}")
+        #print(f"[DEBUG] received cards:")
+        #print(f"[DEBUG] played_card: {played_card}")
+        #print(f"[DEBUG] picked_cards: {picked_cards}")
 
         return played_card, picked_cards
+    
+    def send_last_cards(self, player, cards):
+        serialized_cards = self.serialize_cards(cards)
+        msg = "LAST" + serialized_cards
+        print(f"[DEBUG] sending {msg} to player {player.fileno()}")
+        player.sendall(msg.encode())
+        reply = player.recv(1024).decode()
+        print(f"[DEBUG] received {reply}")
 
     def start(self):
         while len(self.clients) < 2:
@@ -98,7 +101,6 @@ class ScopaServ():
 
         deck = Deck()
         deck.shuffle()
-        print(f"[DEBUG] Numero carte: {deck}")
         cards_left = 40
         round_n = 1
 
@@ -111,27 +113,49 @@ class ScopaServ():
         current_player = self.clients[0]
         other_player = self.clients[1]
 
+        last_to_pick = None
+
         while cards_left > 0:
-            print(f"Round: {round_n}, Cards left: {cards_left}, upcards: {upcards}")
-            print(f"Cards left: {cards_left}")
+            print(f"Round: {round_n}, Cards left: {cards_left}")
             print(f"current player: {current_player.fileno()}")
+            print(f"upcards: {upcards}")
             player_cards = self.quante_carte(current_player)
-            if player_cards == 0:
-                print(f"Player ha {player_cards} carte.")
-                cards = deck.get_cards(3)
-                self.servo_carte(current_player, cards)
+            
+            if player_cards == 0 and deck.is_empty():
+                print(f"Player {current_player.fileno()} has 0 cards and deck is empty. The game is over")
+                break
+            
+            if player_cards == 0 and not deck.is_empty():
+                print(f"\n\n\n----------- ROUND {round_n} -----------")
+                round_n += 1
+                self.servo_carte(current_player, deck.get_cards(3))
+                self.servo_carte(other_player, deck.get_cards(3))
     
             played_card, picked_cards = self.get_played_cards(current_player, upcards)
+            print(f"[DEBUG] player {current_player.fileno()} played: {played_card}. Picks: {picked_cards}.")
             if picked_cards is None:
                 upcards.append(played_card)
             else:
-                cards_left -= len(picked_cards)
+                if picked_cards == upcards:
+                    print("SCOPA!!")
+                cards_left -= len(picked_cards) + 1
+                print(f"[DEBUG] Removing {picked_cards} from upcards")
                 for card in picked_cards:
-                    print(f"[DEBUG] trying to remove card {card} from upcards")
                     upcard_to_remove = next((u for u in upcards if u.value == card.value and u.suit == card.suit), None)
                     upcards.remove(upcard_to_remove)
+                    last_to_pick = current_player
 
-            current_player, other_player= other_player, current_player
+            current_player, other_player = other_player, current_player
+            print("")
+
+        self.send_last_cards(last_to_pick, upcards)
+        upcards.clear()
+
+        for c in self.clients:
+            c.shutdown(socket.SHUT_RDWR)
+            c.close()
+        self.server_socket.shutdown(socket.SHUT_RDWR)
+        self.server_socket.close()
 
     def serialize_cards(self, cards) -> str:
         msg = ''
@@ -144,19 +168,14 @@ class ScopaServ():
         return msg
     
     def deserialize_cards(self, serialized_cards):
-        print(f"[DEBUG] serialized_cards = {serialized_cards}")
         received_cards = serialized_cards.split('@')
         print(f"[DEBUG] received_cards = {received_cards}")
 
         encoded_played_card = received_cards[0][2:]
         played_card_value = int(encoded_played_card[:2]) - 10
-        print(f"[DEBUG] played_card_value = {played_card_value}")
-
         played_card_suit = str(chr(int(encoded_played_card[2:4])))
-        print(f"[DEBUG] played_card_suit = {played_card_suit}")
         
         played_card = Card(played_card_value, played_card_suit)
-        print(f"[DEBUG] played_card = {played_card}")
 
         encoded_picked_cards = received_cards[1]
         if len(encoded_picked_cards) == 0:
