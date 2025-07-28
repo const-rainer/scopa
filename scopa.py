@@ -3,6 +3,8 @@ import random
 from itertools import combinations
 from enum import Enum
 from typing import List
+import json
+import socket
 
 class Suit(Enum):
     B = 1
@@ -47,13 +49,36 @@ class Deck:
         self.current_deck = copy.deepcopy(self.deck)
 
 
+''' devo scrivere un protocollo: 
+def servo_carte(client):
+    cards = deck.get_cards(3)
+    player.set_cards(cards)
+    left_cards -= 3
+
+- inizio
+-- server: servo_carte
+
+- main loop (while left_cards > 0)
+-- server: hai carte?
+-- client: <numero carte>
+-- if n == 0
+---- server: servo carte (invia carte al client)  
+---- client: "carte ricevute"
+-- server: upcards
+-- client: played_card, picked_cards
+-- update_upcards()
+-- if picked_cards != None:
+---- left_cards -= len(picked_cards) + 1
+---- last_to_pick = client
+'''
+
 class CardGame:
     def __init__(self):
         self.deck = Deck()
         self.players = [Player(1), Player(2)]
         self.upcards = []
 
-    def __init_game(self):
+    def init_game(self):
         self.deck.shuffle()
 
         for upcard in self.deck.get_cards(4):
@@ -62,7 +87,7 @@ class CardGame:
         self.players[0].set_playing()
 
     def game(self):
-        self.__init_game()
+        self.init_game()
         n_mano = 1
         last_to_pick = None
 
@@ -120,6 +145,31 @@ class CardGame:
         players_have_cards = any([player.has_cards() for player in self.players])
 
         return deck_has_cards or players_have_cards
+
+
+class ScopaServ(CardGame):
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(2)
+
+        print(f"[ScopaServ listening on address {self.host}:{self.port}]")
+
+        self.clients = []
+        self.addresses = []
+
+    def start(self):
+        while len(self.clients) < 2:
+            conn, addr = self.server_socket.accept()
+            self.clients.append(conn)
+            self.addresses.append(addr)
+            print(f"[Player connected] address: {addr[0]}, port: {addr[1]}")
+
+        print("\n--- [Players connected. Starting game.] ---\n")
+
+        super().init_game()
 
 
 class Player:
@@ -319,6 +369,55 @@ class Score:
 
         return (scores_denari[0] + scores_bastoni[0] + 
                 scores_spade[0] + scores_coppe[0])
+
+class ScopaClientServerInterface:
+    def serialize_cards(self, cards) -> str:
+        msg = ''
+        if cards != None:
+            msg += (str((len(cards)) + 10))
+            for card in cards:
+                msg += str(card.value + 10)
+                msg += str(ord(card.suit))
+            
+        return msg
+    
+    def deserialize_cards(self, serialized_cards):
+        received_cards = []
+        cards_number = int(serialized_cards[:2]) - 10
+        serialized_cards = serialized_cards[2:]
+        for i in range(cards_number):
+            card_value = int(serialized_cards[:2]) - 10
+            card_suit = str(chr(int(serialized_cards[2:4])))
+            received_cards.append(Card(card_value, card_suit))
+            serialized_cards = serialized_cards[4:]
+
+        return received_cards
+    
+    def send_cards(self, played_card, picked_cards):
+        pass
+
+def NetworkPlayer(Player):
+    def __init__(self, hostaddr, port):
+        self.host = hostaddr
+        self.port = port
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.host, self.port))
+
+    def play_card(self):
+        received_cards = self.socket.recv(2048)
+        upcards = self.deserialize_cards(received_cards)
+
+        played_card, picked_cards = super().play_card(upcards)
+
+        serialized_played_card = self.serialize_cards([played_card])
+        serialized_picked_cards = self.serialize_cards(picked_cards)
+
+        serialized_cards = serialized_played_card + '@' + serialized_picked_cards
+
+        msg = json.dumps(self.serialize_cards(serialized_cards)).encode()
+        self.socket.sendall(msg)
+
+
 
 if __name__ == '__main__':
     card_game = CardGame()
