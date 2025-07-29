@@ -66,7 +66,7 @@ class ScopaNetworkPlayer():
 
             case "PLAY":
                 upcards = self.__deserialize_cards(payload)
-                print(f"[DEBUG] received upcards: {upcards[4:]}")
+                print(f"[DEBUG] received upcards: {upcards}")
                 self.__play_card(upcards)
 
             case "LAST":

@@ -1,10 +1,5 @@
 import socket
-import random
-import logging
 from card import Card
-from deck import Deck
-
-logger = logging.getLogger()
 
 class ScopaServ():
     def __init__(self, host, port):
@@ -14,10 +9,7 @@ class ScopaServ():
 
         print(f"[ScopaServ listening on address {host}:{port}]")
 
-        self.__clients = []
-        self.__addresses = []
-
-    def __get_n_cards(self, player):
+    def get_n_cards(self, player):
         msg = "GETN"
         print(f"[DEBUG] sending {msg} to player {player.fileno()}")
         player.sendall(msg.encode())
@@ -27,7 +19,7 @@ class ScopaServ():
 
         return n_carte
 
-    def __set_cards(self, player, cards):
+    def set_cards(self, player, cards):
         serialized_cards = self.__serialize_cards(cards)
         msg = "SETC" + serialized_cards
         print(f"[DEBUG] sending {msg} to player {player.fileno()}")
@@ -36,7 +28,7 @@ class ScopaServ():
         reply = player.recv(16).decode()
         print(f"[DEBUG] received {reply}")
 
-    def __get_played_cards(self, player, upcards):
+    def get_played_cards(self, player, upcards):
         serialized_upcards = self.__serialize_cards(upcards)
         msg = "PLAY" + serialized_upcards
         print(f"[DEBUG] sending {msg} to player {player.fileno()}")
@@ -50,7 +42,7 @@ class ScopaServ():
 
         return played_card, picked_cards
     
-    def __send_last_cards(self, player, cards):
+    def send_last_cards(self, player, cards):
         serialized_cards = self.__serialize_cards(cards)
         msg = "LAST" + serialized_cards
         print(f"[DEBUG] sending {msg} to player {player.fileno()}")
@@ -59,77 +51,12 @@ class ScopaServ():
         reply = player.recv(1024).decode()
         print(f"[DEBUG] received {reply}")
 
-    def __terminate_game(self):
-        for c in self.__clients:
+    def terminate_game(self, clients):
+        for c in clients:
             c.shutdown(socket.SHUT_RDWR)
             c.close()
         self.server_socket.shutdown(socket.SHUT_RDWR)
         self.server_socket.close()
-
-    def play_game(self):
-        while len(self.__clients) < 2:
-            conn, addr = self.server_socket.accept()
-            self.__clients.append(conn)
-            self.__addresses.append(addr)
-            print(f"[Player connected] address: {addr[0]}, port: {addr[1]}")
-
-        print("\n--- [Players connected. Starting game.] ---\n")
-
-        game_deck = Deck()
-        game_deck.shuffle()
-        round_n = 1
-
-        for player in self.__clients:
-            cards = game_deck.get_cards(3)
-            self.__set_cards(player, cards)
-
-        upcards = game_deck.get_cards(4)
-
-        current_player = self.__clients[0]
-        other_player = self.__clients[1]
-
-        last_to_pick = None
-
-        print(f"\n\n\n----------- ROUND {round_n} -----------")
-
-        # main loop
-        while True:
-            print(f"current player: {current_player.fileno()}")
-            print(f"upcards: {upcards}")
-            player_cards = self.__get_n_cards(current_player)
-            
-            if player_cards == 0 and game_deck.is_empty():
-                print(f"Player {current_player.fileno()} has 0 cards and deck is empty. The game is over")
-                break
-            
-            if player_cards == 0 and not game_deck.is_empty():
-                print(f"\n\n\n----------- ROUND {round_n} -----------")
-                round_n += 1
-                self.__set_cards(current_player, game_deck.get_cards(3))
-                self.__set_cards(other_player, game_deck.get_cards(3))
-    
-            played_card, picked_cards = self.__get_played_cards(current_player, upcards)
-            print(f"[DEBUG] player {current_player.fileno()} played: {played_card}. Picks: {picked_cards}.")
-            
-            if picked_cards is None:
-                upcards.append(played_card)
-            else:
-                if picked_cards == upcards:
-                    print("SCOPA!!")
-
-                print(f"[DEBUG] Removing {picked_cards} from upcards")
-                for card in picked_cards:
-                    upcard_to_remove = next((u for u in upcards if u.value == card.value and u.suit == card.suit), None)
-                    upcards.remove(upcard_to_remove)
-                    last_to_pick = current_player
-
-            current_player, other_player = other_player, current_player
-            print("")
-
-        self.__send_last_cards(last_to_pick, upcards)
-        upcards.clear()
-
-        self.__terminate_game()
 
     def __serialize_cards(self, cards) -> str:
         msg = ''
