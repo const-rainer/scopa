@@ -5,21 +5,21 @@ from deck import Deck
 from player import Player
 from typing import List
 
-class NetworkPlayer():
+class ScopaNetworkPlayer():
     def __init__(self, host, port):
-        self.player : Player = None
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((host, port))
+        self.__player : Player = None
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__socket.connect((host, port))
 
     def __repr__(self):
-        return str(self.player)
+        return str(self.__player)
 
     def set_player(self, player : Player):
-        self.player = player
+        self.__player = player
 
     def start(self):
-        while self.socket is not None:
-            print(self.player)
+        while self.__socket is not None:
+            print(self.__player)
             self.__handle_connection()
 
     '''
@@ -41,11 +41,11 @@ class NetworkPlayer():
                 is over. The player stores the cards and replies with a status message.
     '''
     def __handle_connection(self):
-        msg = self.socket.recv(1024).decode()
+        msg = self.__socket.recv(1024).decode()
         
         if msg == "":
-            self.socket.close()
-            self.socket = None
+            self.__socket.close()
+            self.__socket = None
             return
         
         cmd = msg[0:4]
@@ -54,15 +54,15 @@ class NetworkPlayer():
 
         match cmd:
             case "GETN":
-                n_cards = len(self.player.cards)
+                n_cards = len(self.__player.get_cards())
                 print(f"[DEBUG] answering: {str(n_cards)}")
-                self.socket.sendall(str(n_cards).encode())
+                self.__socket.sendall(str(n_cards).encode())
 
             case "SETC":
                 received_cards = self.__deserialize_cards(payload)
                 print(f"[DEBUG] received cards: {received_cards}")
-                self.player.set_cards(received_cards)
-                self.socket.sendall(b'SETC OK')
+                self.__player.set_cards(received_cards)
+                self.__socket.sendall(b'SETC OK')
 
             case "PLAY":
                 upcards = self.__deserialize_cards(payload)
@@ -72,13 +72,13 @@ class NetworkPlayer():
             case "LAST":
                 received_cards = self.__deserialize_cards(payload)
                 print(f"[DEBUG] received last cards: {received_cards}")
-                self.player.add_to_score(received_cards)
-                self.socket.sendall(b'LAST OK')
+                self.__player.add_to_score(received_cards)
+                self.__socket.sendall(b'LAST OK')
 
     def __play_card(self, upcards : List[Card]):
-        print(f"[DEBUG] self.player.cards: {self.player.cards}")
+        print(f"[DEBUG] self.__player.cards: {self.__player.cards}")
 
-        played_card, picked_cards = self.player.play_card(upcards)
+        played_card, picked_cards = self.__player.play_card(upcards)
         print(f"playing cards: {played_card}")
         print(f"picking cards: {picked_cards}")
 
@@ -90,7 +90,7 @@ class NetworkPlayer():
         serialized_cards = serialized_played_card + '@' + serialized_picked_cards
 
         print(f"[DEBUG] sending msg: {serialized_cards}")
-        self.socket.sendall(serialized_cards.encode())
+        self.__socket.sendall(serialized_cards.encode())
 
     def __serialize_cards(self, cards : List[Card]) -> str:
         msg = ''
@@ -116,7 +116,7 @@ class NetworkPlayer():
         return received_cards
 
 if __name__ == "__main__":
-    network_player = NetworkPlayer("0.0.0.0", 12345)
+    network_player = ScopaNetworkPlayer("0.0.0.0", 12345)
     network_player.set_player(Player(1))
     
     network_player.start()

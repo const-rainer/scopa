@@ -22,6 +22,9 @@ class Player:
     def get_score(self):
         return self.score
 
+    def get_cards(self):
+        return self.cards
+
     def play_card(self, upcards):
         played_card = None
         picked_cards = None

@@ -14,8 +14,8 @@ class ScopaServ():
 
         print(f"[ScopaServ listening on address {host}:{port}]")
 
-        self.clients = []
-        self.addresses = []
+        self.__clients = []
+        self.__addresses = []
 
     def __get_n_cards(self, player):
         msg = "GETN"
@@ -59,34 +59,41 @@ class ScopaServ():
         reply = player.recv(1024).decode()
         print(f"[DEBUG] received {reply}")
 
-    def start(self):
-        while len(self.clients) < 2:
+    def __terminate_game(self):
+        for c in self.__clients:
+            c.shutdown(socket.SHUT_RDWR)
+            c.close()
+        self.server_socket.shutdown(socket.SHUT_RDWR)
+        self.server_socket.close()
+
+    def play_game(self):
+        while len(self.__clients) < 2:
             conn, addr = self.server_socket.accept()
-            self.clients.append(conn)
-            self.addresses.append(addr)
+            self.__clients.append(conn)
+            self.__addresses.append(addr)
             print(f"[Player connected] address: {addr[0]}, port: {addr[1]}")
 
         print("\n--- [Players connected. Starting game.] ---\n")
 
         game_deck = Deck()
         game_deck.shuffle()
-        cards_left = 40
         round_n = 1
 
-        for player in self.clients:
+        for player in self.__clients:
             cards = game_deck.get_cards(3)
             self.__set_cards(player, cards)
 
         upcards = game_deck.get_cards(4)
 
-        current_player = self.clients[0]
-        other_player = self.clients[1]
+        current_player = self.__clients[0]
+        other_player = self.__clients[1]
 
         last_to_pick = None
 
         print(f"\n\n\n----------- ROUND {round_n} -----------")
 
-        while cards_left > 0:
+        # main loop
+        while True:
             print(f"current player: {current_player.fileno()}")
             print(f"upcards: {upcards}")
             player_cards = self.__get_n_cards(current_player)
@@ -103,12 +110,13 @@ class ScopaServ():
     
             played_card, picked_cards = self.__get_played_cards(current_player, upcards)
             print(f"[DEBUG] player {current_player.fileno()} played: {played_card}. Picks: {picked_cards}.")
+            
             if picked_cards is None:
                 upcards.append(played_card)
             else:
                 if picked_cards == upcards:
                     print("SCOPA!!")
-                cards_left -= len(picked_cards) + 1
+
                 print(f"[DEBUG] Removing {picked_cards} from upcards")
                 for card in picked_cards:
                     upcard_to_remove = next((u for u in upcards if u.value == card.value and u.suit == card.suit), None)
@@ -121,11 +129,7 @@ class ScopaServ():
         self.__send_last_cards(last_to_pick, upcards)
         upcards.clear()
 
-        for c in self.clients:
-            c.shutdown(socket.SHUT_RDWR)
-            c.close()
-        self.server_socket.shutdown(socket.SHUT_RDWR)
-        self.server_socket.close()
+        self.__terminate_game()
 
     def __serialize_cards(self, cards) -> str:
         msg = ''
